@@ -1,4 +1,5 @@
 import System.Process
+import System.Environment
 import Data.List.Split
 import Control.Monad
 import Text.Regex.TDFA
@@ -65,6 +66,7 @@ getEncryption s = do
     encryption <- submatch "Encryption key:(.*)\n" s
     if encryption == "off" then return False
                            else return True
+
 getAccessPoint :: String -> Maybe AccessPoint
 getAccessPoint s = do
     essid' <- getESSID s
@@ -75,13 +77,30 @@ getAccessPoint s = do
           address = getAddress s,
           frequency = getFrequency s
         }
-    
+
+findInterface :: IO (Maybe String)
+findInterface = do
+    (_, s, _) <- readProcessWithExitCode "iwconfig" [] ""
+    return $ submatch "([^ ]*) .*ESSID" s
 
 scan :: String -> IO [AccessPoint]
 scan interface = do
     s <- readProcess "iwlist" [interface, "scan"] ""
     return $ concat $ map (maybeToList.getAccessPoint) (cells s)
 
-main = do
-    s <- scan "wlp3s0"
-    putStrLn $ prettyPrint s
+usage = do
+    name <- getProgName
+    putStrLn $ "Usage: \n" ++
+        name ++ " scan <interface>\n"
+
+main = getArgs >>= parse
+  where 
+    parse ["scan", interface] = 
+        scan interface >>= (putStrLn . prettyPrint)
+    parse ["scan"] = do 
+        maybeInterface <- findInterface
+        case maybeInterface of
+            Just interface -> 
+                scan interface >>= (putStrLn . prettyPrint)
+            Nothing -> usage
+    parse _ = usage
