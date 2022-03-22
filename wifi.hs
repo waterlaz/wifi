@@ -6,6 +6,8 @@ import Text.Regex.TDFA
 import Data.Maybe
 import Data.List
 
+accessPointsFile = "/tmp/wifiAccessPoints"
+
 data AccessPoint = AccessPoint {
         essid :: String,
         encryption :: Bool,
@@ -83,24 +85,45 @@ findInterface = do
     (_, s, _) <- readProcessWithExitCode "iwconfig" [] ""
     return $ submatch "([^ ]*) .*ESSID" s
 
-scan :: String -> IO [AccessPoint]
-scan interface = do
+getAccessPoints :: String -> IO [AccessPoint]
+getAccessPoints interface = do
     s <- readProcess "iwlist" [interface, "scan"] ""
     return $ concat $ map (maybeToList.getAccessPoint) (cells s)
+
+config :: AccessPoint -> String -> String
+config ap pass = 
+    "network={\n" ++ 
+    "\tssid=\"" ++ essid ap ++ "\"\n" ++
+    passLine ++
+    "}\n"
+    where passLine = "\tpsk=\"" ++ pass ++"\"\n"
+
+scan interface = do
+    aps <- getAccessPoints interface 
+    putStrLn $ prettyPrint aps
+    writeFile accessPointsFile $ show aps
+
+connect id = do
+    aps <- liftM read $ readFile accessPointsFile
+    if (length aps >= id && id>0) then do
+        putStrLn $ "Connecting..."
+        putStrLn $ config (aps!!(id-1)) "some password"
+    else do
+        putStrLn "No such access point"
 
 usage = do
     name <- getProgName
     putStrLn $ "Usage: \n" ++
-        name ++ " scan <interface>\n"
+        name ++ " scan [<interface>]\n" ++
+        name ++ " connect <id>\n"
 
 main = getArgs >>= parse
   where 
-    parse ["scan", interface] = 
-        scan interface >>= (putStrLn . prettyPrint)
+    parse ["scan", interface] = scan interface
     parse ["scan"] = do 
         maybeInterface <- findInterface
         case maybeInterface of
-            Just interface -> 
-                scan interface >>= (putStrLn . prettyPrint)
+            Just interface -> scan interface
             Nothing -> usage
+    parse ["connect", idString] = connect $ read idString
     parse _ = usage
