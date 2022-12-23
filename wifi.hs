@@ -1,10 +1,12 @@
 import System.Process
 import System.Environment
-import Data.List.Split
 import Control.Monad
 import Text.Regex.TDFA
+import Data.List.Split
 import Data.Maybe
 import Data.List
+import Data.Char
+import Numeric
 
 accessPointsFile = "/tmp/wifiAccessPoints"
 
@@ -90,13 +92,26 @@ getAccessPoints interface = do
     s <- readProcess "iwlist" [interface, "scan"] ""
     return $ concat $ map (maybeToList.getAccessPoint) (cells s)
 
+charToHex :: Char -> String
+charToHex c | length s `mod` 2 == 0 = s
+            | otherwise = '0':s
+    where s = showHex (fromEnum c) ""
+
+isGoodChar c = (isAscii c && isAlphaNum c) || any (==c) goodChars
+    where goodChars = "[]!#$%^&()+-_/*"
+
+isGoodString :: String -> Bool
+isGoodString = all isGoodChar
+
+--makeGood :: String -> String
+
 config :: AccessPoint -> String -> String
 config ap pass = 
-    "network={\n" ++ 
-    "\tssid=\"" ++ essid ap ++ "\"\n" ++
-    passLine ++
-    "}\n"
-    where passLine = "\tpsk=\"" ++ pass ++"\"\n"
+    "network={\n" ++ nameLine ++ passLine ++ "}\n"
+    where
+        nameLine = "\tssid=\"" ++ essid ap ++ "\"\n" 
+        passLine | pass == "" = ""
+                 | otherwise  = "\tpsk=\"" ++ pass ++"\"\n"
 
 scan interface = do
     aps <- getAccessPoints interface 
